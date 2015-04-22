@@ -14,6 +14,8 @@ window.onload = function()
 	var CAMY = 16000;
 	var CAMZ = 0;
 	var CAMDIST = 128;
+    var SCREEN_SHAKE = 0;
+    var CAN_SHOOT = true;
 
     // cactus variables
     var CACTUS_TILESIZE = 400;
@@ -215,11 +217,114 @@ window.onload = function()
 
     function cactus(x,y)
     {
-        var parent = new entity(x,y,choose(['cactus','rock','grass','rock','grass','grass']) );
+        this.solid = false;
+        var type = choose(['cactus','rock','grass','rock','grass','grass']);
+        if (type === 'cactus')
+            this.solid = true;
+
+        var parent = new entity(x,y,type);
         for (var i in parent)
             this[i] = parent[i];
+
         this.fadeIn = 1;
         this.fade = true;
+    }
+
+    function bullet(x,y,dir)
+    {
+        var parent = new entity(x,y,'bullet');
+        for (var i in parent)
+            this[i] = parent[i];
+
+        this.fade = true;
+        this.dir = dir;
+        this.life = 200;
+        this.fadeIn = 2;
+
+        this.step = function()
+        {
+            this.x+=lengthdir_x(8,this.dir);
+            this.y+=lengthdir_y(8,this.dir);
+            this.ph.angle+=6;
+
+            if (this.fadeIn>1)
+                this.fadeIn-=0.1;
+            this.life--;
+            if (this.life<0)
+            {
+                this.kill();
+            }
+
+            for (var i in ents)
+            {
+                if (ents[i].alive)
+                {
+                    if ( ents[i] instanceof cactus && ents[i].solid)
+                        if (point_distance(this.x,this.y,ents[i].x,ents[i].y)<12)
+                        {
+                            this.x+=lengthdir_x(6,this.dir);
+                            this.y+=lengthdir_y(6,this.dir);
+                            entityCreate( new explode(this.x,this.y) );
+                            this.kill();
+                            break;
+                        }
+
+                    if (ents[i] instanceof tank)
+                        if (point_distance(this.x,this.y,ents[i].x,ents[i].y)<16)
+                        {
+                            this.x+=lengthdir_x(8,this.dir);
+                            this.y+=lengthdir_y(8,this.dir);
+                            entityCreate( new explode(this.x,this.y,2));
+                            this.kill();
+                            ents[i].kill();
+                            SCREEN_SHAKE+=8;
+                            break;
+                        }
+                }
+            }
+        }
+
+    }
+
+    function explode(x,y,size)
+    {
+        var parent = new entity(x,y,'explode');
+        for (var i in parent)
+            this[i] = parent[i];
+
+        size = size || 1.5;
+        this.ph.angle = Math.random()*360;
+        this.f = 0;
+        SCREEN_SHAKE+=8;
+        this.fadeIn = size;
+
+        this.step = function()
+        {
+            this.f+=0.5;
+            this.ph.frame = this.f|0;
+
+            if (this.f>15)
+                this.kill();
+        }
+    }
+
+    function tank(x,y)
+    {
+        var parent = new entity(x,y,'tank');
+        for (var i in parent)
+            this[i] = parent[i];
+
+        this.dir = 0;
+
+        this.step = function()
+        {
+            this.dir++;
+            this.dir = this.dir%360;
+            this.ph.frame = (4-(this.dir-point_direction(this.x,this.y,CAMX,CAMY))%360/90)|0;
+            this.x+=lengthdir_x(1,this.dir);
+            this.y+=lengthdir_y(1,this.dir);
+        }
+
     }
 
     function preload() 
@@ -233,6 +338,9 @@ window.onload = function()
 		game.load.spritesheet('grass','assets/grass.png',32,32);
 		game.load.image('ground','assets/ground.png');
 		game.load.spritesheet('explode','assets/explodeTiles.png',32,32);
+        game.load.spritesheet('bullet','assets/bullet.png',32,32);
+        game.load.spritesheet('tank','assets/tank.png',32,32);
+        game.load.image('crosshair','assets/crosshair.png');
     }
 
     var bitmap;
@@ -266,9 +374,11 @@ window.onload = function()
        RIGHT_FOR = addKey(Phaser.Keyboard.P);
        LEFT_BACK = addKey(Phaser.Keyboard.A);
        RIGHT_BACK = addKey(Phaser.Keyboard.L)
+       KEY_SHOOT = addKey(Phaser.Keyboard.SPACEBAR);
 
        game.scale.fullScreenScaleMode = Phaser.ScaleManager.SHOW_ALL;
        game.input.onDown.add(fullscreen, this);
+       entityCreate(new tank(16032,16000));
 	   
 	}
 
@@ -326,24 +436,25 @@ window.onload = function()
         }
     }
 
-    function update() 
-    {          
+    function controlTank()
+    {
+
         //tread controls
         if(LEFT_FOR.isDown)
         {
             CAMDIR-=0.5;
             CAMX+=lengthdir_x(2,CAMDIR);
             CAMY+=lengthdir_y(2,CAMDIR);
-            if (angle>-8)
-                angle-=1;
+            if (angle<8)
+                angle+=1;
         }
         else if(LEFT_BACK.isDown)
         {
             CAMDIR+=0.5;
             CAMX-=lengthdir_x(2,CAMDIR);
             CAMY-=lengthdir_y(2,CAMDIR);
-            if (angle<8)
-                angle+=1;
+            if (angle>-8)//
+                angle-=1;
         }
 
         if(RIGHT_FOR.isDown)
@@ -351,8 +462,8 @@ window.onload = function()
             CAMDIR+=0.5;
             CAMX+=lengthdir_x(2,CAMDIR);
             CAMY+=lengthdir_y(2,CAMDIR);
-            if (angle<8)
-                angle+=1;
+            if (angle>-8)//
+                angle-=1;
 
         }
         else if(RIGHT_BACK.isDown)
@@ -360,8 +471,36 @@ window.onload = function()
             CAMDIR-=0.5;
             CAMX-=lengthdir_x(2,CAMDIR);
             CAMY-=lengthdir_y(2,CAMDIR);
-            if (angle>-8)
-                angle-=1;
+            if (angle<8)
+                angle+=1;
+        }
+
+        if (KEY_SHOOT.isDown)
+        {
+            if (CAN_SHOOT)
+            {
+                entityCreate(new bullet(CAMX,CAMY,CAMDIR+Math.random()*8 - 4));
+                SCREEN_SHAKE+=8;
+                CAN_SHOOT = false;
+            }
+        }
+        else
+        {
+            CAN_SHOOT = true;
+        }
+
+        for (var i in ents)
+        {
+            if (ents[i].alive)
+            {
+                if ( ents[i] instanceof cactus && ents[i].solid)
+                    if (point_distance(CAMX,CAMY,ents[i].x,ents[i].y)<16)
+                    {
+                        var backDir = point_direction(ents[i].x,ents[i].y,CAMX,CAMY);
+                        CAMX+=lengthdir_x(4,backDir);
+                        CAMY+=lengthdir_y(4,backDir);
+                    }
+            }
         }
 
         if (angle>8)
@@ -374,20 +513,33 @@ window.onload = function()
             angle+=0.2;
 
         bitmapObject.angle = angle;
-		
+    }
+
+    function update() 
+    {        
+        controlTank();
         manageCacti();
 
 		var i = ents.length;
 		while (i--)
 		{
 			ents[i].step();
+            ents[i].update();
             if (ents[i].alive === false)
             {
                 entityDestroy(i);
             }
-			ents[i].update();
 		}
 		
+        if (SCREEN_SHAKE>32)
+            SCREEN_SHAKE=32;
+
+        bitmapObject.x = 320+Math.random()*SCREEN_SHAKE - SCREEN_SHAKE/2;
+        bitmapObject.y = 240+Math.random()*SCREEN_SHAKE - SCREEN_SHAKE/2;
+
+        if (SCREEN_SHAKE>0)
+            SCREEN_SHAKE--;
+
 		bitmap.clear();
 		bitmap.draw('ground',0,120);
         drawSun();
